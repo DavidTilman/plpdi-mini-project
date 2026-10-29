@@ -1,0 +1,492 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=2cm]{geometry}   % tighten toward 1.5cm if you run over 3 pages
+\usepackage{amsmath,amssymb}
+\usepackage{mathpartir}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  keywordstyle=\bfseries,
+  morekeywords={Func,Print,Read,Lambda,Var,While,If,Else,Ret,Nat,Int,Real,Bool,True,False},
+  columns=fullflexible,
+  frame=single,
+}
+
+% --- Front matter details -------------------------------------------------
+\newcommand{\langname}{Numa}                    
+\newcommand{\studentid}{2763839}
+\newcommand{\giturl}{https://github.com/DavidTilman/plpdi-mini-project}
+\newcommand{\githash}{TODO}                     % TODO: commit hash to be assessed
+
+% --- Semantics notation (borrow rules from numa; these macros match) ------
+\newcommand{\kw}[1]{\mathtt{#1}}                % keyword / concrete syntax
+\newcommand{\eval}{\Downarrow}                  % big-step evaluation
+\newcommand{\config}[1]{\langle #1 \rangle}     % configuration <e, rho, sigma>
+\newcommand{\clo}[3]{\mathsf{clo}(#1,\, #2,\, #3)} % closure
+\newcommand{\rn}[1]{\TirNameStyle{#1}}          % rule name
+
+% --- Type Rules ---%
+\newcommand{\TENAT}{
+	\inferrule*[right=TE-NAT]
+	{ }
+	{\Gamma\vdash n : \kw{Nat}} 
+}
+
+\newcommand{\TEREAL}{
+	\inferrule*[right=TE-REAL]
+	{ }
+	{\Gamma\vdash n : \kw{Real}} 
+}
+
+\newcommand{\STREF}{
+	\inferrule*[right=S-REF]{ }{t \sqsubseteq t}
+}
+
+\newcommand{\STTRANS}{
+	\inferrule*[right=S-TRANS]{t \sqsubseteq t' \\ t' \sqsubseteq t''}{t \sqsubseteq t''}
+}
+
+\newcommand{\STNATINT}{
+	\inferrule*[right=S-NatInt]{ }{\kw{Nat} \sqsubseteq \kw{Int}}
+}
+
+\newcommand{\STINTREAL}{
+	\inferrule*[right=S-IntReal]{ }{\kw{Int}\sqsubseteq \kw{Real}}
+}
+
+\newcommand{\TETRUE}{
+	\inferrule*[right=TE-TRUE]
+	{ }
+	{\Gamma\vdash \kw{True} : \kw{Bool}}
+}
+
+\newcommand{\TEFALSE}{
+	\inferrule*[right=TE-FALSE]
+	{ }
+	{\Gamma\vdash \kw{False} : \kw{Bool}}
+}
+
+\newcommand{\TEVAR}{
+	\inferrule*[right=TE-VAR]
+	{x : \tau \in \Gamma}
+	{\Gamma\vdash x : \tau}
+}
+
+\newcommand{\TELAMBDA}{
+	\inferrule*[right=TE-LAMBDA]
+	{\Gamma, x_1:\tau_1, \ldots, x_n:\tau_n \vdash e : \tau' \\ \tau' \sqsubseteq \tau}
+	{\Gamma \vdash \kw{Lambda}\,(x_1:\tau_1, \ldots, x_n:\tau_n):\tau \Rightarrow e : (\tau_1, \ldots, \tau_n) \to \tau}
+}
+
+\newcommand{\TENEGATE}{
+	\inferrule*[right=TE-NEGATE]
+	{\Gamma\vdash e : \tau \\ \mathsf{neg}(\tau) = \tau'}
+	{\Gamma\vdash -e : \tau'} 
+}
+
+\newcommand{\TEOP}{
+	\inferrule*[right=TE-OP]
+	{\Gamma\vdash e_1 : \tau_1 \\ \Gamma\vdash e_2 : \tau_2 \\ \mathsf{sig(\oplus, \tau_1, \tau_2) = \tau}}
+	{\Gamma\vdash e_1 \oplus e_2 : \tau}
+}
+
+\newcommand{\TEAPP}{
+	\inferrule*[right=TE-APP]
+	{ \Gamma \vdash e : (\tau_1, \ldots, \tau_n) \to \tau \\ \Gamma \vdash e_i : \tau'_i \\ \tau'_i \sqsubseteq \tau_i \quad (1 \le i \le n) }
+	{ \Gamma \vdash e(e_1, \ldots, e_n) : \tau }
+}
+
+\newcommand{\TECOND}{
+	\inferrule*[right=TE-COND]
+	{ \Gamma \vdash e : \kw{Bool} \\ \Gamma \vdash e_1: \tau_1 \\ \Gamma \vdash e_2: \tau_2 \\ \tau = \mathsf{widest}(\tau_1, \tau_2)}
+	{\Gamma\vdash (e\ ?\ e_1\ :\ e_2) : \tau}
+}
+
+\newcommand{\TSDECL} {
+	\inferrule*[right=TS-DECL]
+	{ \Gamma \vdash e : \tau' \\ \tau' \sqsubseteq \tau}
+	{ \Gamma \vdash_{\tau_r} \kw{Var}\ x:\tau = e \dashv \Gamma, x:\tau}
+}
+
+\newcommand{\TSREAD} {
+	\inferrule*[right=TS-READ]
+	{ \text{Read input is of type }\tau}
+	{ \Gamma \vdash_{\tau_r} \kw{Var}\ x : \tau= \kw{Read} \dashv \Gamma,x:\tau}
+}
+
+\newcommand{\TSASSIGN} {
+	\inferrule*[right=TS-ASSIGN]
+	{ x:\tau \in \Gamma \\ \Gamma\vdash e:\tau' \\ \tau' \sqsubseteq \tau }
+	{ \Gamma\vdash_{\tau_r} x:=e \dashv\Gamma}
+}
+
+\newcommand{\TSWHILE} {
+	\inferrule*[right=TS-WHILE]
+	{ \Gamma \vdash e : \kw{Bool} \\ \Gamma \vdash_{\tau_r} b }
+	{ \Gamma \vdash_{\tau_r} \kw{While}\ (e)\ b \dashv \Gamma }
+}
+
+\newcommand{\TSCOND} {
+	\inferrule*[right=TS-COND]
+	{ \Gamma\vdash e: \kw{Bool} \\ \Gamma \vdash_{\tau_r} b_1 \\ \Gamma \vdash_{\tau_r} b_2}
+	{ \Gamma\vdash_{\tau_r} \kw{If}\ (e)\ b_1\ \kw{Else} \ b_2 \dashv \Gamma}
+}
+
+\newcommand{\TSRET} {
+	\inferrule*[right=TS-RET]
+	{\Gamma\vdash e : \tau' \\ \tau' \sqsubseteq \tau_r}
+	{\Gamma \vdash_{\tau_r}\kw{Ret}\ e\dashv\Gamma}
+}
+
+\newcommand{\TSPRINT} {
+	\inferrule*[right=TS-PRINT]
+	{\Gamma\vdash e:\tau }
+	{\Gamma \vdash_{\tau_r}\kw{Print}\ e\dashv\Gamma}
+}
+
+\newcommand{\TBBLOCK} {
+	\inferrule*[right=TB-BLOCK]
+	{ \Gamma_0 \vdash_{\tau_r} s_1 \dashv \Gamma_1 \\
+		\Gamma_1 \vdash_{\tau_r} s_2 \dashv \Gamma_2 \\
+		\cdots \\
+		\Gamma_{n-1} \vdash_{\tau_r} s_n \dashv \Gamma_n }
+	{ \Gamma_0 \vdash_{\tau_r} \{\, s_1; \ldots; s_n \,\} }
+}
+
+\newcommand{\TPPROG} {
+	\inferrule*[right=TP-PROG]
+	{ \Gamma_0 = \overline{f_j : (\tau_{j,1}, \ldots, \tau_{j,k_j}) \to \tau'_j} \\
+		\big(\, \Gamma_0,\ x_{j,1}:\tau_{j,1}, \ldots, x_{j,k_j}:\tau_{j,k_j} \vdash_{\tau'_j} b_j \,\big)_{j} \\
+		\Gamma_0 \vdash_{\bullet} \{\, s_1; \ldots; s_n \,\} }
+	{ \vdash p\ \text{is well-typed} }
+}
+
+\newcommand{\fwidest} {
+	\mathsf{widest}(\tau_1, \tau_2) =
+	\begin{cases}
+		\tau_1 & \tau_1 = \tau_2 \\
+		\text{the wider of } \tau_1,\tau_2 & \tau_1,\tau_2 \in \{\kw{Nat},\kw{Int},\kw{Real}\} \\
+		\text{undefined} & \text{otherwise}
+	\end{cases}
+}
+
+\newcommand{\fneg} {
+	\mathsf{neg}(\tau) =
+	\begin{cases}
+		\kw{Int} & \tau = \kw{Nat} \\
+		\kw{Int} & \tau = \kw{Int} \\
+		\kw{Real} & \tau = \kw{Real} \\
+		\text{undefined} & \text{otherwise}
+	\end{cases}
+}
+
+\newcommand{\fsig} {
+	\mathsf{sig}(\oplus, \tau_1, \tau_2) =
+	\begin{cases}
+		\mathsf{widest}(\tau_1, \tau_2) & \oplus \in \{\kw{+},\kw{*},\kw{/},\kw{\%}\},\ \tau_1,\tau_2 \in \mathrm{Num} \\
+		\mathsf{widest}(\mathsf{widest}(\tau_1,\tau_2),\,\kw{Int}) & \oplus = \kw{-},\ \tau_1,\tau_2 \in \mathrm{Num} \\
+		\kw{Bool} & \oplus \in \{\kw{<},\kw{<=},\kw{>=},\kw{>}\},\ \tau_1,\tau_2 \in \mathrm{Num} \\
+		\kw{Bool} & \oplus \in \{\kw{==},\kw{!=}\},\ \tau_1,\tau_2 \in \mathrm{Num} \text{ or } \tau_1 = \tau_2 = \kw{Bool} \\
+		\kw{Bool} & \oplus \in \{\kw{\&\&},\kw{||}\},\ \tau_1 = \tau_2 = \kw{Bool} \\
+		\text{undefined} & \text{otherwise}
+	\end{cases}
+}
+
+\newcommand{\ENUM} {
+	\inferrule*[right=E-Num]
+	{ }
+	{\config{n,\rho,\sigma} \eval \config{n,\sigma}}
+}
+\newcommand{\ETRUE} {
+	\inferrule*[right=E-True]
+	{ }
+	{\config{\kw{True},\rho,\sigma} \eval \config{\kw{True},\sigma}}
+}
+\newcommand{\EFALSE} {
+	\inferrule*[right=E-False]
+	{ }
+	{\config{\kw{False},\rho,\sigma} \eval \config{\kw{False},\sigma}}
+}
+\newcommand{\EVAR} {
+	\inferrule*[right=E-Var]
+	{ \rho(x)=\ell}
+	{\config{x,\rho,\sigma} \eval \config{\sigma(\ell),\sigma}}
+}
+\newcommand{\ENEG} {
+	\inferrule*[right=E-Neg]
+	{\config{e, \rho, \sigma} \eval \config{v, \sigma'}}
+	{\config{-e, \rho, \sigma} \eval \config{\mathsf{\hat{-}}v, \sigma'}}
+}
+\newcommand{\EOP} {
+	\inferrule*[right=E-Op]
+	{\config{e_1, \rho, \sigma} \eval \config{v_1, \sigma_1} \\
+		\config{e_2, \rho, \sigma_1} \eval \config{v_2, \sigma_2}}
+	{\config{e_1 \oplus e_2, \rho, \sigma} \eval \config{v_1 \mathbin{\hat{\oplus}} v_2, \sigma_2}}
+}
+\newcommand{\ECONDT} {
+	\inferrule*[right=E-Cond-T]
+	{\config{e,\rho, \sigma}\eval\config{\kw{True}, \sigma'} \\ \config{e_1, \rho, \sigma'}\eval\config{v_1, \sigma''}}
+	{\config{e\ ?\ e_1 : e_2, \rho, \sigma}
+		\eval
+		\config{v_1, \sigma''}}
+}
+\newcommand{\ECONDF} {
+	\inferrule*[right=E-Cond-F]
+	{\config{e,\rho, \sigma}\eval\config{\kw{False}, \sigma'} \\ \config{e_2, \rho, \sigma'}\eval\config{v_2, \sigma''}}
+	{\config{e\ ?\ e_1 : e_2, \rho, \sigma}
+		\eval
+		\config{v_2, \sigma''}}
+}	
+\newcommand{\ELAMBDA} {
+	\inferrule*[right=E-Lambda]
+	{ }
+	{\config{\kw{Lambda}\ (\overline{x : \tau}) : \tau' \Rightarrow e, \rho, \sigma}
+		\eval
+		\config{\clo{\overline{x}}{\{\kw{Ret}\ e;\}}{\rho}, \sigma}}
+}
+\newcommand{\EAPP} {
+	\inferrule*[right=E-App]
+	{\config{e, \rho, \sigma} \eval \config{\clo{\overline{x}}{b}{\rho_\theta}, \sigma_0} \\
+		\config{e_i, \rho, \sigma_{i-1}} \eval \config{v_i, \sigma_i} \quad (1 \le i \le n) \\\\
+		\overline{\ell} \notin \mathrm{dom}(\sigma_n) \\
+		\config{b, \rho_\theta[\overline{x} \mapsto \overline{\ell}], \sigma_n[\overline{\ell} \mapsto \overline{v}]} \eval \config{\mathsf{ret}\ v, \sigma'}}
+	{\config{e(\overline{e}), \rho, \sigma} \eval \config{v, \sigma'}}
+}
+\newcommand{\SVAR} {
+	\inferrule*[right=S-Var]
+	{\config{e, \rho, \sigma} \eval \config{v, \sigma'} \\
+		\ell \notin \mathrm{dom}(\sigma')}
+	{\config{\kw{Var}\ x : \tau = e, \rho, \sigma}
+		\eval \config{\mathsf{normal}, \rho[x \mapsto \ell], \sigma'[\ell \mapsto v]}}
+}
+\newcommand{\SREAD} {
+	\inferrule*[right=S-Read]
+	{v \text{ of type } \tau \text{ is read from input} \\ \ell \notin \mathrm{dom}(\sigma)}
+	{\config{\kw{Var}\ x : \tau = \kw{Read}, \rho, \sigma}
+		\eval \config{\mathsf{normal}, \rho[x \mapsto \ell], \sigma[\ell \mapsto v]}}
+}
+\newcommand{\SASSIGN} {
+	\inferrule*[right=S-Assign]
+	{\config{e, \rho, \sigma} \eval \config{v, \sigma'} \\
+		\rho(x) = \ell}
+	{\config{x := e, \rho, \sigma}
+		\eval \config{\mathsf{normal}, \rho, \sigma'[\ell \mapsto v]}}
+}
+\newcommand{\SWHILET} {
+	\inferrule*[right=S-While-T]
+	{\config{e, \rho, \sigma} \eval \config{\kw{True}, \sigma'} \\
+		\config{b, \rho, \sigma'} \eval \config{\mathsf{normal}, \sigma''} \\
+		\config{\kw{While}\ (e)\ b, \rho, \sigma''} \eval \config{r, \rho, \sigma'''}}
+	{\config{\kw{While}\ (e)\ b, \rho, \sigma} \eval \config{r, \rho, \sigma'''}}
+}
+\newcommand{\SWHILEF} {
+	\inferrule*[right=S-While-F]
+	{\config{e, \rho, \sigma} \eval \config{\kw{False}, \sigma'}}
+	{\config{\kw{While}\ (e)\ b, \rho, \sigma} \eval \config{\mathsf{normal}, \rho, \sigma'}}
+}
+\newcommand{\SWHILERET} {
+	\inferrule*[right=S-While-Ret]
+	{\config{e, \rho, \sigma} \eval \config{\kw{True}, \sigma'} \\
+		\config{b, \rho, \sigma'} \eval \config{\mathsf{ret}\ v, \sigma''}}
+	{\config{\kw{While}\ (e)\ b, \rho, \sigma} \eval \config{\mathsf{ret}\ v, \rho, \sigma''}}
+}
+\newcommand{\SCONDT} {
+	\inferrule*[right=S-COND-T]
+	{\config{e,\rho,\sigma}\eval\config{\kw{True}, \sigma'} \\ \config{b_1, \rho,\sigma'}\eval\config{r_1,\sigma''}}
+	{\config{\kw{If}\ (e)\ b_1\ \kw{Else}\ b_2, \rho, \sigma} \eval \config{r_1,\rho,\sigma''}}
+}
+\newcommand{\SCONDF} {
+	\inferrule*[right=S-COND-F]
+	{\config{e,\rho,\sigma}\eval\config{\kw{False}, \sigma'} \\ \config{b_2, \rho,\sigma'}\eval\config{r_2,\sigma''}}
+	{\config{\kw{If}\ (e)\ b_1\ \kw{Else}\ b_2, \rho, \sigma} \eval \config{r_2,\rho,\sigma''}}
+}
+\newcommand{\SRET} {
+	\inferrule*[right=S-Ret]
+	{\config{e,\rho,\sigma}\eval\config{v,\sigma'}}
+	{\config{\kw{Ret}\ e, \rho, \sigma}\eval \config{\mathsf{ret}\ v, \rho,\sigma'}}
+}
+\newcommand{\SPRINT} {
+	\inferrule*[right=S-Print]
+	{\config{e,\rho,\sigma}\eval\config{v,\sigma'}}
+	{\config{\kw{Print}\ e, \rho, \sigma}\eval\config{\mathsf{normal}, \rho, \sigma'}}
+}
+\newcommand{\BBLOCK} {
+	\inferrule*[right=B-Empty]
+	{ }
+	{\config{\{ \ \}, \rho, \sigma} \eval \config{\mathsf{normal}, \sigma}}
+}
+\newcommand{\BSEQ} {
+	\inferrule*[right=B-Seq]
+	{\config{s_1, \rho, \sigma}\eval\config{\mathsf{normal}, \rho', \sigma'} \\ \config{\{\ \overline{s}\ \}, \rho', \sigma'} \eval \config{r, \sigma''}}
+	{\config{\{ s_1; \overline{s}; \}, \rho, \sigma} \eval \config{r, \sigma''}}
+}
+\newcommand{\BRET} {
+	\inferrule*[right=B-Ret]
+	{\config{s_1, \rho, \sigma}\eval\config{\mathsf{ret}\ v, \rho', \sigma'}}
+	{\config{\{ s_1; \overline{s}; \}, \rho, \sigma} \eval \config{\mathsf{ret}\ v, \sigma'}}
+}
+\newcommand{\PPROG} {
+	\inferrule*[right=P-Prog]
+	{\mathrm{funcs}(p) = \kw{Func}\ F_j (\overline{x_j : \tau_j}) : \tau'_j = b_j \quad (1 \le j \le k) \\
+		\mathrm{stmts}(p) = \overline{s} \\\\
+		\ell_1, \ldots, \ell_k \text{ distinct} \\
+		\rho_g = [F_1 \mapsto \ell_1, \ldots, F_k \mapsto \ell_k] \\\\
+		\sigma_0 = [\ell_1 \mapsto \clo{\overline{x_1}}{b_1}{\rho_g}, \ldots, \ell_k \mapsto \clo{\overline{x_k}}{b_k}{\rho_g}] \\\\
+		\config{\{ \overline{s} \}, \rho_g, \sigma_0} \eval \config{\mathsf{normal}, \sigma'}}
+	{\config{p} \eval \config{\sigma'}}
+}
+
+\title{\langname}
+\author{David Tilman \\ Student ID: \studentid}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{center}
+  \begin{tabular}{rl}
+    Repository: & \url{\giturl} \\
+    Commit:     & \texttt{\githash}
+  \end{tabular}
+\end{center}
+
+% ==========================================================================
+% MAIN TEXT: 3 PAGES MAX (non-extended). Put the KEY / distinctive rules here
+% with prose that shows understanding; push the FULL rule sets to the appendix.
+% SCOPE: IMP core + functions/lambdas/closures + numeric-subtyping type system.
+% NO lists, NO records. (Borrow from the numa repo, deleting those productions.)
+% ==========================================================================
+
+% ==========================================================================
+\section{Informal Description}
+% 1--2 paragraphs. What the language is and how it MEANINGFULLY extends IMP
+% (and borrows from the lambda-calculus) beyond the lectures. Name the two
+% extensions explicitly: (1) first-class functions with closures and static
+% scoping; (2) a static type system with numeric subtyping Nat <: Int <: Real.
+
+
+% ==========================================================================
+\section{Formal Syntax and Semantics}
+
+\subsection{Abstract Syntax}
+% BNF for: operators, types (base + function types), expressions, blocks,
+% statements, declarations (Func), programs. Borrow from numa; drop the list
+% and record productions.
+%
+\[
+\begin{array}{rcll}
+	  \oplus & ::=  & \kw{+} \mid \kw{-} \mid \kw{*} \mid \kw{/} \mid \kw{\%}
+					   \mid \kw{<} \mid \kw{<=} \mid \kw{==} \mid \kw{!=} \mid \kw{>=} \mid \kw{>} 
+					   \mid \kw{||} \mid \kw{\&\&}                                                                                     & \text{binary operators}                 \\
+	\tau   & ::=  & \kw{Nat} \mid \kw{Int} \mid \kw{Real} \mid \kw{Bool} \mid  (\tau_1, \dots, \tau_n) \to \tau                        & \text{types}                            \\
+	e      & ::=  & n \mid \kw{True} \mid \kw{False} \mid x 
+	                  \mid \kw{Lambda}\ (x_1 : \tau_1, \dots, x_n : \tau_n) : \tau \Rightarrow e                                       & \text{literals, variable, lambda}       \\
+	& \mid & -e \mid e_1 \oplus e_2 \mid e(e_1, \dots, e_n) \mid e\ ?\ e_1 : e_2                                                       & \text{operations, application, ternary} \\
+	s      & ::=  & \kw{Var}\ x : \tau = e \mid \kw{Var}\ x : \tau = \kw{Read} \mid  x := e                                            & \text{declaration, read, assign}        \\
+	& \mid & \kw{While}\ (e)\ b \mid \kw{If}\ (e)\ b_1\ \kw{Else}\ b_2                                                                 & \text{control flow}                     \\
+	& \mid & \kw{Ret}\ e \mid \kw{Print}\ e                                                                                            & \text{return or print}                  \\
+	d & ::= & \kw{Func}\ F\ (x_1 : \tau_1, \dots, x_n : \tau_n) : \tau = b                                                             & \text{function declaration}             \\
+	b      & ::=  & \{\, s_1;\ \dots;\ s_n; \,\}                                                                                       & \text{block } (n \ge 0)                 \\
+	c      & ::=  & d \mid s                                                                                                           & \text{top-level item}                   \\
+	p      & ::=  & c_1;\ \dots;\ c_n;                                                                                                 & \text{program}
+\end{array}
+\]
+
+
+\subsection{Type System}
+% KEY rules + prose only. Lead with the interesting choices:
+%   - subtyping  Nat <: Int <: Real  (and the widest/sig helpers);
+%   - the context-threading statement judgement  Gamma |-_{tau_r} s -| Gamma';
+%   - TE-APP / TE-LAMBDA with the subtyping premise (TE-LAMBDA extends Gamma);
+%   - TP-PROG (functions mutually visible; top-level Ret untypable).
+% Full typing rules -> Appendix A.
+%
+\noindent The type system uses three partial meta-functions, writing
+$\mathrm{Num} = \{\kw{Nat}, \kw{Int}, \kw{Real}\}$ for the numeric types:
+$\mathsf{neg}$ types unary negation (widening a $\kw{Nat}$ to $\kw{Int}$),
+$\mathsf{widest}$ is the least upper bound of $\sqsubseteq$ (used by the ternary),
+and $\mathsf{sig}$ gives the result type of a binary operator.
+\[ \fneg \qquad \fwidest \]
+\[ \fsig \]
+
+\begin{mathpar}
+	\STREF \and \STTRANS \and \STNATINT \and \STINTREAL \\
+	\TENAT \and \TEREAL \\
+	\TETRUE \and \TEFALSE \\
+	\TEVAR \and \TELAMBDA \\
+	\TENEGATE \and \TEOP \and \TEAPP \and \TECOND \\
+	\TSDECL \and \TSREAD \and \TSASSIGN \\
+	\TSWHILE \and \TSCOND \\
+	\TSRET \and \TSPRINT \\
+	\TBBLOCK \and \TPPROG
+\end{mathpar}
+
+
+\subsection{Operational Semantics}
+% Notation (rho : Var -> Loc, sigma : Loc -> Value, closures, outcomes
+% normal | ret v), the judgement forms, then the DISTINCTIVE rules:
+%   - E-APP (closures, fresh locations, static scoping);
+%   - P-PROG (hoisting: every closure captures rho_g);
+%   - S-WHILE-T / S-WHILE-RET (outcome threading).
+% Trivial rules (E-NUM, E-VAR, S-ASSIGN, B-SEQ, ...) -> Appendix B.
+%
+\begin{mathpar}
+	\ENUM \and \ETRUE \and \EFALSE \and \ELAMBDA \\
+	\ENEG \and \EOP \\
+	\EAPP \\ 
+	\ECONDT \and \ECONDF \\
+	\SVAR \and \SREAD \and \SASSIGN \\
+	\SWHILET \and \SWHILEF \and \SWHILERET \\
+	\SCONDT \and \SCONDF \\
+	\SRET \and \SPRINT \\
+	\BBLOCK \and \BSEQ \and \BRET \\
+	\PPROG
+\end{mathpar}
+
+
+% ==========================================================================
+\section{Implementation}
+% Technical details + match with the formal semantics. Keep tight:
+%   - host language (C#); pipeline Lexer -> Parser -> Type Checker -> AST interp;
+%   - sealed records mirror the grammar one-to-one;
+%   - Env/Ref model rho/sigma;
+%   - ONE correspondence example (e.g. E_Var) tying code to a rule;
+%   - note limitations: monomorphic lambdas; numeric precision/overflow.
+
+
+% ==========================================================================
+\section{Distinctive-Feature Example Program}
+% 1--2 paragraphs. A higher-order program -- e.g. a function that RETURNS a
+% closure capturing a local variable (make_adder style). Show the source,
+% state what it demonstrates, and how it uses closures + static scoping.
+
+
+% ==========================================================================
+\section{Reflection on AI and Collaboration}
+% 1 paragraph, in your own words. Condense AI_Note.txt honestly; note any
+% collaboration with other students (code + report written independently).
+
+
+% ==========================================================================
+\appendix
+
+\section{Full Type System Rules}
+% The complete typing rules not shown in Section 2.2.
+
+
+\section{Full Operational Semantics Rules}
+% The complete reduction rules not shown in Section 2.3.
+
+
+% --------------------------------------------------------------------------
+% REQUIRED example programs live in /example_programs (source in the repo):
+%   addition, half (floor n/2), factorial, fibonacci, + the distinctive one.
+% --------------------------------------------------------------------------
+
+\end{document}
