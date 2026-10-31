@@ -1,0 +1,3 @@
+Var m : Nat = Read;
+Var n : Nat = Read;
+Print m + n; 

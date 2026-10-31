@@ -1,0 +1,2 @@
+Var n : Nat = Read;
+Print n / 2.0;

@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="MiniProject.Language.CLI/MiniProject.Language.CLI.csproj" />
+  <Project Path="MiniProject.Language/MiniProject.Language.csproj" />
+</Solution>

@@ -1,0 +1,13 @@
+Var base : Int = Read;
+
+Var addBase : (Int) -> Int = Lambda (n : Int) : Int => n + base;
+
+Var abs : (Int) -> Int = Lambda (n : Int) : Int => n >= 0 ? n : -n;
+
+Func Thrice (f : (Int) -> Int, x : Int) : Int = {
+    Ret f(f(f(x)));
+};
+
+Print addBase(10);         
+Print abs(-7);             
+Print Thrice(addBase, 0);  

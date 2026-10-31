@@ -1,0 +1,15 @@
+Var n : Nat = Read;
+
+Func Fact (n : Int) : Int = {
+    If (n == 0) {
+        Ret 1;
+    } Else { };
+
+    If (n == 1) {
+        Ret 1;
+    } Else { };
+
+    Ret n * Fact(n-1);
+};
+
+Print Fact (n);

@@ -1,0 +1,15 @@
+Var n : Nat = Read;
+
+Func Fib (n : Int) : Nat = {
+    If (n == 0) {
+        Ret 0;
+    } Else { };
+
+    If (n == 1) {
+        Ret 1;
+    } Else { };
+
+    Ret Fib(n-1) + Fib(n-2); 
+};
+
+Print Fib(n);
